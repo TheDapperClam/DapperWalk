@@ -1,7 +1,6 @@
 ﻿using BepInEx.Configuration;
 using BepInEx.Logging;
 using DapperWalk.Core;
-using Mirror;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -117,7 +116,7 @@ namespace DapperWalk.GeoGuessr {
             spectateKeyConfigEntry = configService.Get ( "Input", "SpectateKey", DEFAULT_SPECTATE_KEY );
         }
 
-        private GameObject BuildBeacon ( uint netId, Vector3 position, Vector3 scale) {
+        private GameObject BuildBeacon ( uint netId, Vector3 position, Vector3 scale ) {
             if (playerBeacons.ContainsKey ( netId )) {
                 GameObject cachedBeacon = playerBeacons[netId];
                 cachedBeacon.transform.position = position;
@@ -157,9 +156,9 @@ namespace DapperWalk.GeoGuessr {
             return beacon;
         }
 
-        private void BuildConfetti (Vector3 position) {
+        private void BuildConfetti ( Vector3 position ) {
             if (confetti == null) {
-                confetti = new GameObject ("GeoGuessr Confetti");
+                confetti = new GameObject ( "GeoGuessr Confetti" );
 
                 AudioClip sfx = Resources.FindObjectsOfTypeAll<AudioClip> ().First ( c => c.name == CONFETTI_AUDIO_CLIP_NAME );
                 AudioSource audioSource = confetti.AddComponent<AudioSource> ();
@@ -183,9 +182,9 @@ namespace DapperWalk.GeoGuessr {
             StringBuilder sb = new ();
             int placement = 0;
 
-            foreach (ScoreEntry entry in SortScores(scores)) {
+            foreach (ScoreEntry entry in SortScores ( scores )) {
                 placement++;
-                sb.AppendLine ( $"{placement}. <color=#{ColorUtility.ToHtmlStringRGB(GetPlayerColor ( entry.NetId ))}>{entry.Name}</color>: {entry.Score.ToString ( "n2" )}" );
+                sb.AppendLine ( $"{placement}. <color=#{ColorUtility.ToHtmlStringRGB ( GetPlayerColor ( entry.NetId ) )}>{entry.Name}</color>: {entry.Score.ToString ( "n2" )}" );
             }
             return sb.ToString ();
         }
@@ -264,7 +263,7 @@ namespace DapperWalk.GeoGuessr {
 
             PlayerCharacter pc = playerCharacterService.GetPlayerCharacter ( currentPlayerPoint.OwnerNetId );
             StringBuilder sb = new ();
-            sb.AppendLine ( $"View Spot: {spectateKeyConfigEntry.Value}");
+            sb.AppendLine ( $"View Spot: {spectateKeyConfigEntry.Value}" );
             if (currentPlayerPoint.OwnerNetId == localPlayer.netId) {
                 sb.Append ( $"Everyone else is looking for your spot." );
             } else {
@@ -412,7 +411,7 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private void SetPlayerPoint () {
-            if (currentPlayerPoint.OwnerNetId == localPlayer.netId || isSpectating || 
+            if (currentPlayerPoint.OwnerNetId == localPlayer.netId || isSpectating ||
                 (currentMinigameState != MinigameState.ChoosePoints && currentMinigameState != MinigameState.FindPoints)) {
                 return;
             }
@@ -495,7 +494,7 @@ namespace DapperWalk.GeoGuessr {
                     if (!localPlayer.isServer || Time.time < revealEndTime) {
                         break;
                     }
-                    if (IsMinigameOver()) {
+                    if (IsMinigameOver ()) {
                         networkService.Send ( NetRelayEndMinigame );
                     } else {
                         FindNextPlayerPoint ();
