@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Big Walk Steam": {
+      "commandName": "Executable",
+      "executablePath": "%STEAM_INSTALL_DIRECTORY%\\steam.exe",
+      "commandLineArgs": "-applaunch 1478500 \"--doorstop-enabled\" \"true\" \"--doorstop-target-assembly\" \"%R2MODMAN_LOCAL_DIRECTORY%\\BigWalk\\profiles\\Development\\BepInEx\\core\\BepInEx.Unity.IL2CPP.dll\""
+    }
+  }
+}

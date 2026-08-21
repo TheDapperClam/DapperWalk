@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DapperWalk-Core/DapperWalk-Core.csproj" Id="32ddf506-e96a-4c1c-ae41-368df4f43cc4" />
+  <Project Path="GeoGuessr/GeoGuessr.csproj" />
+</Solution>
