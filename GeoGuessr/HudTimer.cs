@@ -1,22 +1,45 @@
-﻿using System;
+﻿using DapperWalk.Core;
+using System;
 using UnityEngine;
 
 namespace DapperWalk.GeoGuessr {
     public class HudTimer : HudText {
-        private Action? callback;
-        private float targetTime;
+        private const string WARNING_AUDIO_CLIP_NAME = "ui_text_chat_send";
 
-        public void Play ( float time, Action? callback ) {
+        private Action? callback;
+        private ResourceRepository resourceRepository;
+        private float targetTime;
+        private AudioSource warningAudio;
+        private int warningRemainingTime;
+
+        public void Play ( float time, Action? callback, int warningRemainingTime = 5 ) {
             this.callback = callback;
+            this.warningRemainingTime = warningRemainingTime;
             targetTime = Time.time + time;
             gameObject.SetActive ( true );
         }
 
-        private void Update () {
-            float remainingTime = targetTime - Time.time;
+        protected override void Awake () {
+            base.Awake ();
 
-            if (remainingTime > 0f) {
-                Text.text = Mathf.CeilToInt ( remainingTime ).ToString ();
+            resourceRepository = Singleton.Summon<ResourceRepository> ();
+
+            AudioClip clip = resourceRepository.Get<AudioClip> ( WARNING_AUDIO_CLIP_NAME );
+            warningAudio = gameObject.AddComponent<AudioSource> ();
+            warningAudio.clip = clip;
+            warningAudio.spatialBlend = 0f;
+        }
+
+        private void Update () {
+            int remainingTime = Mathf.CeilToInt ( targetTime - Time.time );
+
+            if (remainingTime > 0) {
+                string currentText = Text.text;
+                Text.text = remainingTime.ToString ();
+
+                if (remainingTime <= warningRemainingTime && currentText != Text.text) {
+                    warningAudio.Play ();
+                }
                 return;
             }
 
