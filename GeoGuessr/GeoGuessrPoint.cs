@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using DapperWalk.Core;
+using UnityEngine;
 
 namespace DapperWalk.GeoGuessr {
     public struct GeoGuessrPoint ( PlayerCharacter pc ) {
