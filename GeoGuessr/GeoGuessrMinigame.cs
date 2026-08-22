@@ -11,9 +11,9 @@ namespace DapperWalk.GeoGuessr {
     public class GeoGuessrMinigame : DapperNetworker, IMinigame {
         public enum MinigameState {
             Stopped = 0,
-            ChoosePoints,
-            FindPoints,
-            Reveal
+            ChoosePoints = 1,
+            FindPoints = 2,
+            Reveal = 4
         }
 
         private const KeyCode DEFAULT_CONFIRM_KEY = KeyCode.G;
@@ -159,10 +159,6 @@ namespace DapperWalk.GeoGuessr {
 
         [NetworkFunction ( payloadType: typeof ( void ) )]
         private bool NetRelayChoosePoints ( uint senderNetId, object payload ) {
-            if (!ValidateServer ( senderNetId )) {
-                return false;
-            }
-
             logger.LogInfo ( "Time for players to choose their GeoGuessr points" );
 
             localPlayer ??= playerCharacterService.GetLocalPlayerCharacter ();
@@ -178,10 +174,6 @@ namespace DapperWalk.GeoGuessr {
 
         [NetworkFunction ( payloadType: typeof ( void ) )]
         private bool NetRelayEndMinigame ( uint senderNetId, object payload ) {
-            if (!ValidateServer ( senderNetId )) {
-                return false;
-            }
-
             logger.LogInfo ( "GeoGuessr has ended" );
 
             currentMinigameState = MinigameState.Stopped;
@@ -193,10 +185,6 @@ namespace DapperWalk.GeoGuessr {
 
         [NetworkFunction ( payloadType: typeof ( GeoGuessrPoint ) )]
         private bool NetRelayFindPlayerPoint ( uint senderNetId, object payload ) {
-            if (!ValidateServer ( senderNetId )) {
-                return false;
-            }
-
             currentMinigameState = MinigameState.FindPoints;
             minigameContext.PointToFind = (GeoGuessrPoint) payload;
             skipConfirmInput = true;
@@ -221,10 +209,6 @@ namespace DapperWalk.GeoGuessr {
 
         [NetworkFunction ( payloadType: typeof ( Dictionary<uint, System.Numerics.Vector3> ) )]
         private bool NetRelayResetPlayer ( uint senderNetId, object payload ) {
-            if (!ValidateServer ( senderNetId )) {
-                return false;
-            }
-
             logger.LogInfo ( "Resetting players" );
 
             var startingPositions = (Dictionary<uint, System.Numerics.Vector3>) payload;
@@ -245,9 +229,6 @@ namespace DapperWalk.GeoGuessr {
 
         [NetworkFunction ( payloadType: typeof ( RevealData ) )]
         private bool NetRelayReveal ( uint senderNetId, object payload ) {
-            if (!ValidateServer ( senderNetId )) {
-                return false;
-            }
             logger.LogInfo ( "Revealing point" );
 
             RevealData data = (RevealData) payload;
@@ -272,12 +253,8 @@ namespace DapperWalk.GeoGuessr {
             return false;
         }
 
-        [NetworkFunction ( payloadType: typeof ( GeoGuessrPoint ) )]
+        [NetworkFunction ( payloadType: typeof ( GeoGuessrPoint ), receiverAuthority: NetAuthority.Server, senderAuthority: NetAuthority.Any )]
         private bool NetRelaySetPlayerGeoGuessrPoint ( uint senderNetId, object payload ) {
-            if (!localPlayer.isServer) {
-                return false;
-            }
-
             GeoGuessrPoint point = (GeoGuessrPoint) payload;
 
             if (CanPlayerSetPoint ( senderNetId, point.OwnerNetId )) {
@@ -416,13 +393,6 @@ namespace DapperWalk.GeoGuessr {
                     break;
             }
             skipConfirmInput = false;
-        }
-
-        private bool ValidateServer ( uint netId ) {
-            // TODO: Server validation doesn't work
-            return true;
-            //PlayerCharacter pc = playerCharacterService.GetPlayerCharacter ( netId );
-            //return pc.isServer;
         }
     }
 }

@@ -21,6 +21,7 @@ namespace DapperWalk.Core {
             IncludeFields = true
         };
 
+        private PlayerCharacter? localPlayer;
         private NetworkFunctionRepository networkFunctionRepository;
         private PlayerCharacterService playerCharacterService;
 
@@ -75,6 +76,16 @@ namespace DapperWalk.Core {
             playerCharacterService = Singleton.Summon<PlayerCharacterService> ();
         }
 
+        private bool IsAuthorized ( PlayerCharacter pc, NetAuthority authority ) {
+            switch (authority) {
+                case NetAuthority.Client:
+                    return pc.playerNetworking.isClient;
+                case NetAuthority.Server:
+                    return pc.playerNetworking.isHost;
+            }
+            return true;
+        }
+
         private bool ProcessMessage ( TextChatMessage message ) {
             string[] artifacts = message.message.Split ( MESSAGE_SEPARATOR, MESSAGE_MAX_ARTIFACTS, StringSplitOptions.RemoveEmptyEntries );
 
@@ -92,12 +103,32 @@ namespace DapperWalk.Core {
                 return true;
             }
 
-            string? payload = artifacts.Length > (int) MessageArtifacts.Payload ? artifacts[(int) MessageArtifacts.Payload] : null;
             object[] attributes = registeredFunction.Method.GetCustomAttributes ( typeof ( NetworkFunction ), true );
+
+            if (attributes.Length <= 0) {
+                logger.LogError ( $"Registered function does not have {nameof ( NetworkFunction )} attribute: {functionKey}" );
+                return false;
+            }
+
+            NetworkFunction netFuncAttr = (NetworkFunction) attributes.First ();
+            localPlayer ??= playerCharacterService.GetLocalPlayerCharacter ();
+
+            if (localPlayer == null) {
+                return false;
+            }
+            if (!IsAuthorized ( message.sendingPlayer, netFuncAttr.SenderAuthority )) {
+                logger.LogWarning ( $"Sender not authorized to call network function: {message.sendingPlayer.playerNetworking.moderationNameSanitized}" );
+                return false;
+            }
+            if (!IsAuthorized ( localPlayer, netFuncAttr.ReceiverAuthority )) {
+                logger.LogWarning ( $"Player not authorized to receive network function: {localPlayer.playerNetworking.moderationNameSanitized}" );
+                return false;
+            }
+
+            string? payload = artifacts.Length > (int) MessageArtifacts.Payload ? artifacts[(int) MessageArtifacts.Payload] : null;
             object? deserializedPayload = null;
 
-            if (attributes.Length > 0 && payload != null) {
-                NetworkFunction netFuncAttr = (NetworkFunction) attributes.First ();
+            if (payload != null) {
                 try {
                     deserializedPayload = JsonSerializer.Deserialize ( payload, netFuncAttr.PayloadType, jsonOptions );
                 } catch {

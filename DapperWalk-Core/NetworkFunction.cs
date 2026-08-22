@@ -1,10 +1,14 @@
 ﻿namespace DapperWalk.Core {
-    [AttributeUsage(AttributeTargets.Method)]
-    public class NetworkFunction : Attribute {
-        public readonly Type PayloadType;
+    public enum NetAuthority {
+        Any,
+        Client,
+        Server
+    }
 
-        public NetworkFunction ( Type payloadType ) {
-            PayloadType = payloadType;
-        }
+    [AttributeUsage(AttributeTargets.Method)]
+    public class NetworkFunction ( Type payloadType, NetAuthority receiverAuthority = NetAuthority.Any, NetAuthority senderAuthority = NetAuthority.Server ) : Attribute {
+        public readonly Type PayloadType = payloadType;
+        public readonly NetAuthority ReceiverAuthority = receiverAuthority;
+        public readonly NetAuthority SenderAuthority = senderAuthority;
     }
 }
