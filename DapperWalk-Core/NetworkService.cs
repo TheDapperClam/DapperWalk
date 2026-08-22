@@ -77,13 +77,7 @@ namespace DapperWalk.Core {
         }
 
         private bool IsAuthorized ( PlayerCharacter pc, NetAuthority authority ) {
-            switch (authority) {
-                case NetAuthority.Client:
-                    return pc.playerNetworking.isClient;
-                case NetAuthority.Server:
-                    return pc.playerNetworking.isHost;
-            }
-            return true;
+            return authority != NetAuthority.Server || pc.playerNetworking.isHost;
         }
 
         private bool ProcessMessage ( TextChatMessage message ) {

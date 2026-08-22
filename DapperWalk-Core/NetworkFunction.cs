@@ -1,7 +1,6 @@
 ﻿namespace DapperWalk.Core {
     public enum NetAuthority {
         Any,
-        Client,
         Server
     }
 
