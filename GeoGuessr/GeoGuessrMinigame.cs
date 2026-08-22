@@ -1,6 +1,7 @@
 ﻿using BepInEx.Configuration;
 using BepInEx.Logging;
 using DapperWalk.Core;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,17 +12,18 @@ namespace DapperWalk.GeoGuessr {
     public class GeoGuessrMinigame : DapperNetworker, IMinigame {
         public enum MinigameState {
             Stopped = 0,
-            ChoosePoints = 1,
-            FindPoints = 2,
-            Reveal = 4
+            Start = 1,
+            ChoosePoints = 2,
+            FindPoints = 4,
+            Reveal = 8
         }
 
+        private const float DEFAULT_CHOOSE_POINT_TIME = 300f;
         private const KeyCode DEFAULT_CONFIRM_KEY = KeyCode.G;
-        private const float DEFAULT_REVEAL_TIME = 10f;
+        private const float DEFAULT_FIND_POINT_TIME = 360f;
+        private const float DEFAULT_REVEAL_TIME = 15f;
         private const KeyCode DEFAULT_SPECTATE_KEY = KeyCode.LeftAlt;
-        private const string TEXT_FONT_NAME = "Courier Prime Sans Bold SDF";
-
-        private const string UI_PARENT_NAME = "Will Fade With Ending";
+        private const float START_TIME = 10f;
 
         private static readonly ManualLogSource logger = Logging.CreateLogger ( typeof ( GeoGuessrMinigame ) );
         private static readonly ColorPicker colorPicker = new ( [
@@ -41,16 +43,19 @@ namespace DapperWalk.GeoGuessr {
 
         public int MinimumPlayerCount { get; set; } = 2;
 
+        private ConfigEntry<float> choosePointTimeConfigEntry;
         private ConfigService configService;
         private ConfigEntry<KeyCode> confirmKeyConfigEntry;
         private Confetti confetti;
         private MinigameState currentMinigameState;
         private Dictionary<uint, GeoGuessrPoint> findPlayerPointsDictionary = [];
+        private ConfigEntry<float> findPointTimeConfigEntry;
         private Dictionary<uint, GeoGuessrPoint> guessedPlayerPointsDictionary = [];
         private float hideMinigameTextTime = float.MaxValue;
         private PlayerCharacter localPlayer;
         private MinigameContext minigameContext;
-        private TextMeshProUGUI minigameText;
+        private HudText minigameStatusText;
+        private HudTimer minigameTimer;
         private NetworkService networkService;
         private int participatingPlayerCount;
         private Dictionary<uint, Beacon> playerBeacons = [];
@@ -59,7 +64,6 @@ namespace DapperWalk.GeoGuessr {
         private Dictionary<uint, ScoreEntry> playerScores = [];
         private Dictionary<uint, System.Numerics.Vector3> playerStartingPoints = [];
         private Queue<uint> remainingPlayersQueue = [];
-        private float revealEndTime;
         private ConfigEntry<float> revealTimeConfigEntry;
         private bool skipConfirmInput;
         private ConfigEntry<KeyCode> spectateKeyConfigEntry;
@@ -82,7 +86,8 @@ namespace DapperWalk.GeoGuessr {
                 return;
             }
 
-            List<PlayerCharacter> pcs = networkService.Send ( NetRelayChoosePoints ).Successful;
+            StartData data = new ( START_TIME );
+            List<PlayerCharacter> pcs = networkService.Send ( NetRelayStartMinigame, data ).Successful;
             participatingPlayerCount = pcs.Count;
 
             logger.LogInfo ( $"Starting GeoGuessr with {participatingPlayerCount} players" );
@@ -105,7 +110,9 @@ namespace DapperWalk.GeoGuessr {
             playerCharacterService = Singleton.Summon<PlayerCharacterService> ();
             spectator = Singleton.Summon<Spectator> ();
 
+            choosePointTimeConfigEntry = configService.Get ( "General", "ChooseSpotTime", DEFAULT_CHOOSE_POINT_TIME );
             confirmKeyConfigEntry = configService.Get ( "Input", "ConfirmKey", DEFAULT_CONFIRM_KEY );
+            findPointTimeConfigEntry = configService.Get ( "General", "FindSpotTime", DEFAULT_FIND_POINT_TIME );
             revealTimeConfigEntry = configService.Get ( "General", "RevealTime", DEFAULT_REVEAL_TIME );
             spectateKeyConfigEntry = configService.Get ( "Input", "SpectateKey", DEFAULT_SPECTATE_KEY );
         }
@@ -114,16 +121,37 @@ namespace DapperWalk.GeoGuessr {
             PlayerCharacter[] pcs = playerCharacterService.GetPlayerCharacters ();
 
             return callerNetId == targetNetId &&
-                (!spectator.IsSpectating || callerNetId != localPlayer.netId) &&
                 (currentMinigameState & (MinigameState.ChoosePoints | MinigameState.FindPoints)) != 0 &&
                 (callerNetId != minigameContext.PointToFind.OwnerNetId || Mathf.Max ( pcs.Length, participatingPlayerCount ) < MinimumPlayerCount);
+        }
+
+        private void ChoosePoints () {
+            if (!localPlayer.isServer) {
+                return;
+            }
+
+            ChoosePointData data = new ( choosePointTimeConfigEntry.Value );
+            networkService.Send ( NetRelayChoosePoints, data );
+        }
+
+        private void EndReveal () {
+            if (!localPlayer.isServer) {
+                return;
+            }
+            if (IsMinigameOver ()) {
+                networkService.Send ( NetRelayEndMinigame );
+            } else {
+                FindNextPlayerPoint ();
+            }
         }
 
         private void FindNextPlayerPoint () {
             if (!localPlayer.isServer || remainingPlayersQueue.Count <= 0 || findPlayerPointsDictionary.Count <= 0) {
                 return;
             }
-            networkService.Send ( NetRelayFindPlayerPoint, findPlayerPointsDictionary[remainingPlayersQueue.Dequeue ()] );
+
+            FindPointData data = new ( findPlayerPointsDictionary[remainingPlayersQueue.Dequeue ()], findPointTimeConfigEntry.Value );
+            networkService.Send ( NetRelayFindPlayerPoint, data );
         }
 
         private string FormatScores ( Dictionary<uint, ScoreEntry> scores ) {
@@ -147,6 +175,12 @@ namespace DapperWalk.GeoGuessr {
             return color;
         }
 
+        private bool HasActiveBeacon () {
+            return localPlayer != null &&
+                playerBeacons.ContainsKey ( localPlayer.netId ) &&
+                playerBeacons[localPlayer.netId].gameObject.activeSelf;
+        }
+
         private void HideBeacons () {
             foreach (var beaconPair in playerBeacons) {
                 beaconPair.Value.gameObject.SetActive ( false );
@@ -157,18 +191,24 @@ namespace DapperWalk.GeoGuessr {
             return currentMinigameState != MinigameState.Stopped && remainingPlayersQueue.Count <= 0;
         }
 
-        [NetworkFunction ( payloadType: typeof ( void ) )]
+        [NetworkFunction ( payloadType: typeof ( ChoosePointData ) )]
         private bool NetRelayChoosePoints ( uint senderNetId, object payload ) {
             logger.LogInfo ( "Time for players to choose their GeoGuessr points" );
 
+            ChoosePointData data = (ChoosePointData) payload;
             localPlayer ??= playerCharacterService.GetLocalPlayerCharacter ();
             currentMinigameState = MinigameState.ChoosePoints;
             minigameContext.Reset ();
             skipConfirmInput = true;
             findPlayerPointsDictionary.Clear ();
             guessedPlayerPointsDictionary.Clear ();
-            SetMinigameText ( $"Set / Update Spot: {confirmKeyConfigEntry.Value}\nPick a spot for other players to try and find." );
 
+            SetMinigameText ( $"Set / Update Spot: {confirmKeyConfigEntry.Value}\nPick a spot for other players to try and find." );
+            SetMinigameTimer ( data.Time, () => {
+                if (!HasActiveBeacon ()) {
+                    SetPlayerPoint ();
+                }
+            } );
             return false;
         }
 
@@ -183,10 +223,11 @@ namespace DapperWalk.GeoGuessr {
             return false;
         }
 
-        [NetworkFunction ( payloadType: typeof ( GeoGuessrPoint ) )]
+        [NetworkFunction ( payloadType: typeof ( FindPointData ) )]
         private bool NetRelayFindPlayerPoint ( uint senderNetId, object payload ) {
+            FindPointData data = (FindPointData) payload;
             currentMinigameState = MinigameState.FindPoints;
-            minigameContext.PointToFind = (GeoGuessrPoint) payload;
+            minigameContext.PointToFind = data.Point;
             skipConfirmInput = true;
 
             logger.LogInfo ( $"Time to find {minigameContext.PointToFind.OwnerNetId}'s GeoGuessr point" );
@@ -203,6 +244,11 @@ namespace DapperWalk.GeoGuessr {
 
             HideBeacons ();
             SetMinigameText ( sb.ToString () );
+            SetMinigameTimer ( data.Time, () => {
+                if (!HasActiveBeacon ()) {
+                    SetPlayerPoint ();
+                }
+            } );
 
             return false;
         }
@@ -232,6 +278,7 @@ namespace DapperWalk.GeoGuessr {
             logger.LogInfo ( "Revealing point" );
 
             RevealData data = (RevealData) payload;
+            currentMinigameState = MinigameState.Reveal;
 
             foreach (var guessedPointPair in data.GuessedPoints) {
                 uint netId = guessedPointPair.Key;
@@ -242,8 +289,7 @@ namespace DapperWalk.GeoGuessr {
 
             spectator.SpectateStop ();
             SetMinigameText ( $"{(data.WasLastRound ? "Final Results" : "Round Results")}\n{data.Score}" );
-            currentMinigameState = MinigameState.Reveal;
-            revealEndTime = Time.time + revealTimeConfigEntry.Value;
+            SetMinigameTimer ( data.Time, EndReveal );
 
             if (data.WasLastRound) {
                 PlayerCharacter winner = playerCharacterService.GetPlayerCharacter ( data.WinnerNetId );
@@ -290,12 +336,23 @@ namespace DapperWalk.GeoGuessr {
 
                             bool wasLastRound = IsMinigameOver ();
                             uint winnerNetId = SortScores ( playerScores ).First ().NetId;
-                            RevealData data = new ( guessedPlayerPointsDictionary, FormatScores ( playerScores ), minigameContext.PointToFind, wasLastRound, winnerNetId );
+                            RevealData data = new ( guessedPlayerPointsDictionary, FormatScores ( playerScores ), minigameContext.PointToFind, revealTimeConfigEntry.Value,
+                                wasLastRound, winnerNetId );
                             networkService.Send ( NetRelayReveal, data );
                         }
                         break;
                 }
             }
+            return false;
+        }
+
+        [NetworkFunction(payloadType: typeof(StartData))]
+        private bool NetRelayStartMinigame (uint senderNetId, object payload) {
+            StartData data = (StartData) payload;
+            currentMinigameState = MinigameState.Start;
+
+            SetMinigameText ("Starting GeoGuessr");
+            SetMinigameTimer ( data.Time, ChoosePoints );
             return false;
         }
 
@@ -340,27 +397,30 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private void SetMinigameText ( string text, float hideAfterSeconds = 0f ) {
-            if (minigameText == null) {
-                GameObject uiParent = GameObject.Find ( UI_PARENT_NAME );
+            if (minigameStatusText == null) {
                 GameObject textObject = new ( "GeoGuessr Text" );
-                textObject.transform.parent = uiParent.transform;
+                minigameStatusText = textObject.AddComponent<HudText> ();
+                minigameStatusText.Text.alignment = TextAlignmentOptions.BottomLeft;
 
-                TMP_FontAsset font = Resources.FindObjectsOfTypeAll<TMP_FontAsset> ().First ( f => f.name == TEXT_FONT_NAME );
-                minigameText = textObject.AddComponent<TextMeshProUGUI> ();
-                minigameText.alignment = TextAlignmentOptions.BottomLeft;
-                minigameText.font = font;
-
-                RectTransform rectTransform = minigameText.GetComponent<RectTransform> ();
-                rectTransform.anchorMin = Vector2.zero;
-                rectTransform.anchorMax = Vector2.one;
+                RectTransform rectTransform = minigameStatusText.GetComponent<RectTransform> ();
                 rectTransform.anchoredPosition = new Vector2 ( 150f, 50f );
             }
-            minigameText.text = text;
-            minigameText.enabled = !string.IsNullOrEmpty ( text );
+            minigameStatusText.Text.text = text;
+            minigameStatusText.gameObject.SetActive ( !string.IsNullOrEmpty ( text ) );
             hideMinigameTextTime = hideAfterSeconds <= 0f ? float.MaxValue : Time.time + hideAfterSeconds;
         }
 
+        private void SetMinigameTimer ( float time, Action? callback = null ) {
+            if (minigameTimer == null) {
+                GameObject timerObject = new ("GeoGuessr Timer");
+                minigameTimer = timerObject.AddComponent<HudTimer> ();
+                minigameTimer.Text.alignment = TextAlignmentOptions.Center;
 
+                RectTransform rectTransform = minigameTimer.GetComponent<RectTransform> ();
+                rectTransform.anchoredPosition = new Vector2 ( 0f, -64f );
+            }
+            minigameTimer.Play ( time, callback );
+        }
 
         private ScoreEntry[] SortScores ( Dictionary<uint, ScoreEntry> scores ) {
             return [.. scores.Values.OrderBy ( e => e.Score )];
@@ -379,16 +439,6 @@ namespace DapperWalk.GeoGuessr {
                         spectator.SpectateStart ();
                     } else if (Input.GetKeyUp ( spectateKeyConfigEntry.Value ) || Cursor.lockState != CursorLockMode.Locked) {
                         spectator.SpectateStop ();
-                    }
-                    break;
-                case MinigameState.Reveal:
-                    if (!localPlayer.isServer || Time.time < revealEndTime) {
-                        break;
-                    }
-                    if (IsMinigameOver ()) {
-                        networkService.Send ( NetRelayEndMinigame );
-                    } else {
-                        FindNextPlayerPoint ();
                     }
                     break;
             }
