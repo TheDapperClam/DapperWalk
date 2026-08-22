@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using DapperWalk.Core;
+using System.Linq;
 using UnityEngine;
 
 namespace DapperWalk.GeoGuessr {
@@ -19,10 +20,12 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private GameObject dot;
+        private ResourceRepository resourceRepository;
 
         private void Awake () {
-            Material mat = Resources.FindObjectsOfTypeAll<Material> ().First ( m => m.name == BEACON_MATERIAL_NAME );
+            resourceRepository = Singleton.Summon<ResourceRepository> ();
 
+            Material mat = resourceRepository.Get<Material> ( BEACON_MATERIAL_NAME );
             LineRenderer line = gameObject.AddComponent<LineRenderer> ();
             line.useWorldSpace = false;
             line.widthMultiplier = BEACON_WIDTH;

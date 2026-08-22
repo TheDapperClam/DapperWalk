@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using DapperWalk.Core;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 
@@ -8,10 +9,15 @@ namespace DapperWalk.GeoGuessr {
 
         public TextMeshProUGUI Text { get; private set; }
 
+        private TMP_FontAsset font;
+        private ResourceRepository resourceRepository;
+
         protected override void Awake () {
             base.Awake ();
 
-            TMP_FontAsset font = Resources.FindObjectsOfTypeAll<TMP_FontAsset> ().First ( f => f.name == TEXT_FONT_NAME );
+            resourceRepository = Singleton.Summon<ResourceRepository> ();
+
+            TMP_FontAsset font = resourceRepository.Get<TMP_FontAsset> ( TEXT_FONT_NAME );
             Text = gameObject.AddComponent<TextMeshProUGUI> ();
             Text.font = font;
 

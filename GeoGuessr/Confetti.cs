@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using DapperWalk.Core;
+using System.Linq;
 using UnityEngine;
 
 namespace DapperWalk.GeoGuessr {
@@ -6,13 +7,17 @@ namespace DapperWalk.GeoGuessr {
         private const string CONFETTI_AUDIO_CLIP_NAME = "sfx_challengeWin_confetti_01";
         private const string CONFETTI_PARTICLES_NAME = "RewardConfettiParticle";
 
+        private ResourceRepository resourceRepository;
+
         public void Play () {
             GetComponent<AudioSource> ().Play ();
             GetComponentInChildren<ParticleSystem> ().Play ();
         }
 
         private void Awake () {
-            AudioClip sfx = Resources.FindObjectsOfTypeAll<AudioClip> ().First ( c => c.name == CONFETTI_AUDIO_CLIP_NAME );
+            resourceRepository = Singleton.Summon<ResourceRepository> ();
+
+            AudioClip sfx = resourceRepository.Get<AudioClip> ( CONFETTI_AUDIO_CLIP_NAME );
             AudioSource audioSource = gameObject.AddComponent<AudioSource> ();
             audioSource.clip = sfx;
 
