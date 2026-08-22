@@ -25,7 +25,6 @@ namespace DapperWalk.GeoGuessr {
         private const KeyCode DEFAULT_SPECTATE_KEY = KeyCode.LeftAlt;
         private const string CONFETTI_AUDIO_CLIP_NAME = "sfx_challengeWin_confetti_01";
         private const string CONFETTI_PARTICLES_NAME = "RewardConfettiParticle";
-        private const int MINIMUM_PLAYER_COUNT = 2;
         private const string TEXT_FONT_NAME = "Courier Prime Sans Bold SDF";
 
         private const string UI_PARENT_NAME = "Will Fade With Ending";
@@ -45,6 +44,8 @@ namespace DapperWalk.GeoGuessr {
             Color.yellowNice,
             Color.orangeRed
         ] );
+
+        public int MinimumPlayerCount { get; set; } = 2;
 
         private ConfigService configService;
         private ConfigEntry<KeyCode> confirmKeyConfigEntry;
@@ -85,8 +86,8 @@ namespace DapperWalk.GeoGuessr {
 
             PlayerCharacter[] connectedPlayers = playerCharacterService.GetPlayerCharacters ();
 
-            if (connectedPlayers.Length < MINIMUM_PLAYER_COUNT) {
-                SetMinigameText ( $"There are currently {connectedPlayers.Length} player(s), at least {MINIMUM_PLAYER_COUNT} players are required to play GeoGuessr", 5f );
+            if (connectedPlayers.Length < MinimumPlayerCount) {
+                SetMinigameText ( $"There are currently {connectedPlayers.Length} player(s), at least {MinimumPlayerCount} players are required to play GeoGuessr", 5f );
                 return;
             }
 
@@ -117,42 +118,43 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private GameObject BuildBeacon ( uint netId, Vector3 position, Vector3 scale ) {
+            GameObject beacon;
+
             if (playerBeacons.ContainsKey ( netId )) {
-                GameObject cachedBeacon = playerBeacons[netId];
-                cachedBeacon.transform.position = position;
-                cachedBeacon.transform.localScale = scale;
-                cachedBeacon.SetActive ( true );
-                return cachedBeacon;
+                beacon = playerBeacons[netId];
+            } else {
+                Material mat = Resources.FindObjectsOfTypeAll<Material> ().First ( m => m.name == BEACON_MATERIAL_NAME );
+                beacon = new ( "GeoGuessr Beacon" );
+
+                LineRenderer line = beacon.AddComponent<LineRenderer> ();
+                line.useWorldSpace = false;
+                line.widthMultiplier = BEACON_WIDTH;
+                line.material = mat;
+                line.SetPosition ( 0, Vector3.zero );
+                line.SetPosition ( 1, Vector3.up * BEACON_MAX_HEIGHT );
+
+                Color startColor = GetPlayerColor ( netId );
+                Color endColor = startColor;
+                endColor.a = 0f;
+                line.SetColors ( startColor, endColor );
+
+                GameObject sphere = GameObject.CreatePrimitive ( PrimitiveType.Sphere );
+                sphere.transform.parent = beacon.transform;
+                sphere.transform.localScale *= BEACON_DOT_SCALE;
+                sphere.transform.localPosition = Vector3.zero;
+                Destroy ( sphere.GetComponent<Collider> () );
+
+                Renderer rend = sphere.GetComponent<Renderer> ();
+                rend.material = mat;
+                rend.material.color = startColor;
+
+                playerBeacons[netId] = beacon;
             }
 
-            Material mat = Resources.FindObjectsOfTypeAll<Material> ().First ( m => m.name == BEACON_MATERIAL_NAME );
-            GameObject beacon = new ( "GeoGuessr Beacon" );
             beacon.transform.position = position;
             beacon.transform.localScale = scale;
+            beacon.SetActive ( true );
 
-            LineRenderer line = beacon.AddComponent<LineRenderer> ();
-            line.useWorldSpace = false;
-            line.widthMultiplier = BEACON_WIDTH;
-            line.material = mat;
-            line.SetPosition ( 0, Vector3.zero );
-            line.SetPosition ( 1, Vector3.up * BEACON_MAX_HEIGHT );
-
-            Color startColor = GetPlayerColor ( netId );
-            Color endColor = startColor;
-            endColor.a = 0f;
-            line.SetColors ( startColor, endColor );
-
-            GameObject sphere = GameObject.CreatePrimitive ( PrimitiveType.Sphere );
-            sphere.transform.parent = beacon.transform;
-            sphere.transform.localScale *= BEACON_DOT_SCALE;
-            sphere.transform.localPosition = Vector3.zero;
-            Destroy ( sphere.GetComponent<Collider> () );
-
-            Renderer rend = sphere.GetComponent<Renderer> ();
-            rend.material = mat;
-            rend.material.color = startColor;
-
-            playerBeacons[netId] = beacon;
             return beacon;
         }
 
@@ -169,6 +171,15 @@ namespace DapperWalk.GeoGuessr {
             confetti.transform.position = position;
             confetti.GetComponent<AudioSource> ().Play ();
             confetti.GetComponentInChildren<ParticleSystem> ().Play ();
+        }
+
+        private bool CanPlayerSetPoint (uint callerNetId, uint targetNetId) {
+            PlayerCharacter[] pcs = playerCharacterService.GetPlayerCharacters ();
+
+            return callerNetId == targetNetId &&
+                (!isSpectating || callerNetId != localPlayer.netId) &&
+                (currentMinigameState & (MinigameState.ChoosePoints | MinigameState.FindPoints)) != 0 &&
+                (callerNetId != currentPlayerPoint.OwnerNetId || Mathf.Max(pcs.Length, participatingPlayerCount) < MinimumPlayerCount);
         }
 
         private void FindNextPlayerPoint () {
@@ -338,7 +349,7 @@ namespace DapperWalk.GeoGuessr {
 
             GeoGuessrPoint point = (GeoGuessrPoint) payload;
 
-            if (point.OwnerNetId == senderNetId && currentPlayerPoint.OwnerNetId != senderNetId) {
+            if (CanPlayerSetPoint(senderNetId, point.OwnerNetId)) {
                 PlayerCharacter pc = playerCharacterService.GetPlayerCharacter ( senderNetId );
 
                 logger.LogDebug ( $"Setting {pc.playerNetworking.moderationNameSanitized}'s GeoGuessr point: {point.Position}" );
@@ -411,8 +422,7 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private void SetPlayerPoint () {
-            if (currentPlayerPoint.OwnerNetId == localPlayer.netId || isSpectating ||
-                (currentMinigameState != MinigameState.ChoosePoints && currentMinigameState != MinigameState.FindPoints)) {
+            if (!CanPlayerSetPoint(localPlayer.netId, localPlayer.netId)) {
                 return;
             }
 

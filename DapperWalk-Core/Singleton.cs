@@ -19,7 +19,7 @@ namespace DapperWalk.Core {
             MonoBehaviour instance = go.AddComponent<T> ();
             singletons.Add ( type, instance );
             GameObject.DontDestroyOnLoad ( go );
-
+            
             return (T) instance;
         }
     }
