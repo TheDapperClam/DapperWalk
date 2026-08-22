@@ -111,11 +111,11 @@ namespace DapperWalk.Core {
                 return false;
             }
             if (!IsAuthorized ( message.sendingPlayer, netFuncAttr.SenderAuthority )) {
-                logger.LogWarning ( $"Sender not authorized to call network function: {message.sendingPlayer.playerNetworking.moderationNameSanitized}" );
+                logger.LogDebug ( $"Sender not authorized to call network function: {message.sendingPlayer.playerNetworking.moderationNameSanitized}" );
                 return false;
             }
             if (!IsAuthorized ( localPlayer, netFuncAttr.ReceiverAuthority )) {
-                logger.LogWarning ( $"Player not authorized to receive network function: {localPlayer.playerNetworking.moderationNameSanitized}" );
+                logger.LogDebug ( $"Player not authorized to receive network function: {localPlayer.playerNetworking.moderationNameSanitized}" );
                 return false;
             }
 
