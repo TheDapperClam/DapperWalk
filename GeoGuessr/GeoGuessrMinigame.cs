@@ -16,15 +16,9 @@ namespace DapperWalk.GeoGuessr {
             Reveal
         }
 
-        private const float BEACON_DOT_SCALE = 0.5f;
-        private const string BEACON_MATERIAL_NAME = "Sprite-Unlit-Default";
-        private const float BEACON_MAX_HEIGHT = 100.0f;
-        private const float BEACON_WIDTH = 0.25f;
         private const KeyCode DEFAULT_CONFIRM_KEY = KeyCode.G;
         private const float DEFAULT_REVEAL_TIME = 10f;
         private const KeyCode DEFAULT_SPECTATE_KEY = KeyCode.LeftAlt;
-        private const string CONFETTI_AUDIO_CLIP_NAME = "sfx_challengeWin_confetti_01";
-        private const string CONFETTI_PARTICLES_NAME = "RewardConfettiParticle";
         private const string TEXT_FONT_NAME = "Courier Prime Sans Bold SDF";
 
         private const string UI_PARENT_NAME = "Will Fade With Ending";
@@ -49,7 +43,7 @@ namespace DapperWalk.GeoGuessr {
 
         private ConfigService configService;
         private ConfigEntry<KeyCode> confirmKeyConfigEntry;
-        private GameObject confetti;
+        private Confetti confetti;
         private MinigameState currentMinigameState;
         private GeoGuessrPoint currentPlayerPoint;
         private Dictionary<uint, GeoGuessrPoint> findPlayerPointsDictionary = [];
@@ -60,7 +54,7 @@ namespace DapperWalk.GeoGuessr {
         private TextMeshProUGUI minigameText;
         private NetworkService networkService;
         private int participatingPlayerCount;
-        private Dictionary<uint, GameObject> playerBeacons = [];
+        private Dictionary<uint, Beacon> playerBeacons = [];
         private PlayerCharacterService playerCharacterService;
         private Dictionary<uint, Color> playerColors = [];
         private Dictionary<uint, ScoreEntry> playerScores = [];
@@ -117,69 +111,13 @@ namespace DapperWalk.GeoGuessr {
             spectateKeyConfigEntry = configService.Get ( "Input", "SpectateKey", DEFAULT_SPECTATE_KEY );
         }
 
-        private GameObject BuildBeacon ( uint netId, Vector3 position, Vector3 scale ) {
-            GameObject beacon;
-
-            if (playerBeacons.ContainsKey ( netId )) {
-                beacon = playerBeacons[netId];
-            } else {
-                Material mat = Resources.FindObjectsOfTypeAll<Material> ().First ( m => m.name == BEACON_MATERIAL_NAME );
-                beacon = new ( "GeoGuessr Beacon" );
-
-                LineRenderer line = beacon.AddComponent<LineRenderer> ();
-                line.useWorldSpace = false;
-                line.widthMultiplier = BEACON_WIDTH;
-                line.material = mat;
-                line.SetPosition ( 0, Vector3.zero );
-                line.SetPosition ( 1, Vector3.up * BEACON_MAX_HEIGHT );
-
-                Color startColor = GetPlayerColor ( netId );
-                Color endColor = startColor;
-                endColor.a = 0f;
-                line.SetColors ( startColor, endColor );
-
-                GameObject sphere = GameObject.CreatePrimitive ( PrimitiveType.Sphere );
-                sphere.transform.parent = beacon.transform;
-                sphere.transform.localScale *= BEACON_DOT_SCALE;
-                sphere.transform.localPosition = Vector3.zero;
-                Destroy ( sphere.GetComponent<Collider> () );
-
-                Renderer rend = sphere.GetComponent<Renderer> ();
-                rend.material = mat;
-                rend.material.color = startColor;
-
-                playerBeacons[netId] = beacon;
-            }
-
-            beacon.transform.position = position;
-            beacon.transform.localScale = scale;
-            beacon.SetActive ( true );
-
-            return beacon;
-        }
-
-        private void BuildConfetti ( Vector3 position ) {
-            if (confetti == null) {
-                confetti = new GameObject ( "GeoGuessr Confetti" );
-
-                AudioClip sfx = Resources.FindObjectsOfTypeAll<AudioClip> ().First ( c => c.name == CONFETTI_AUDIO_CLIP_NAME );
-                AudioSource audioSource = confetti.AddComponent<AudioSource> ();
-                audioSource.clip = sfx;
-
-                Instantiate ( GameObject.Find ( CONFETTI_PARTICLES_NAME ), confetti.transform, false );
-            }
-            confetti.transform.position = position;
-            confetti.GetComponent<AudioSource> ().Play ();
-            confetti.GetComponentInChildren<ParticleSystem> ().Play ();
-        }
-
-        private bool CanPlayerSetPoint (uint callerNetId, uint targetNetId) {
+        private bool CanPlayerSetPoint ( uint callerNetId, uint targetNetId ) {
             PlayerCharacter[] pcs = playerCharacterService.GetPlayerCharacters ();
 
             return callerNetId == targetNetId &&
                 (!isSpectating || callerNetId != localPlayer.netId) &&
                 (currentMinigameState & (MinigameState.ChoosePoints | MinigameState.FindPoints)) != 0 &&
-                (callerNetId != currentPlayerPoint.OwnerNetId || Mathf.Max(pcs.Length, participatingPlayerCount) < MinimumPlayerCount);
+                (callerNetId != currentPlayerPoint.OwnerNetId || Mathf.Max ( pcs.Length, participatingPlayerCount ) < MinimumPlayerCount);
         }
 
         private void FindNextPlayerPoint () {
@@ -212,7 +150,7 @@ namespace DapperWalk.GeoGuessr {
 
         private void HideBeacons () {
             foreach (var beaconPair in playerBeacons) {
-                beaconPair.Value.SetActive ( false );
+                beaconPair.Value.gameObject.SetActive ( false );
             }
         }
 
@@ -324,9 +262,9 @@ namespace DapperWalk.GeoGuessr {
             foreach (var guessedPointPair in data.GuessedPoints) {
                 uint netId = guessedPointPair.Key;
                 Vector3 position = guessedPointPair.Value.Position.ToUnity ();
-                BuildBeacon ( netId, position, Vector3.one * 0.5f );
+                PlaceBeacon ( netId, position, Vector3.one * 0.5f );
             }
-            BuildBeacon ( data.TargetPoint.OwnerNetId, data.TargetPoint.Position.ToUnity (), Vector3.one * 1.5f );
+            PlaceBeacon ( data.TargetPoint.OwnerNetId, data.TargetPoint.Position.ToUnity (), Vector3.one * 1.5f );
 
             SpectateStop ();
             SetMinigameText ( $"{(data.WasLastRound ? "Final Results" : "Round Results")}\n{data.Score}" );
@@ -335,7 +273,7 @@ namespace DapperWalk.GeoGuessr {
 
             if (data.WasLastRound) {
                 PlayerCharacter winner = playerCharacterService.GetPlayerCharacter ( data.WinnerNetId );
-                BuildConfetti ( winner.cameraTransform.position );
+                PlayConfetti ( winner.cameraTransform.position );
             }
 
             return false;
@@ -349,7 +287,7 @@ namespace DapperWalk.GeoGuessr {
 
             GeoGuessrPoint point = (GeoGuessrPoint) payload;
 
-            if (CanPlayerSetPoint(senderNetId, point.OwnerNetId)) {
+            if (CanPlayerSetPoint ( senderNetId, point.OwnerNetId )) {
                 PlayerCharacter pc = playerCharacterService.GetPlayerCharacter ( senderNetId );
 
                 logger.LogDebug ( $"Setting {pc.playerNetworking.moderationNameSanitized}'s GeoGuessr point: {point.Position}" );
@@ -391,6 +329,34 @@ namespace DapperWalk.GeoGuessr {
             return false;
         }
 
+        private Beacon PlaceBeacon ( uint netId, Vector3 position, Vector3 scale ) {
+            Beacon beacon;
+
+            if (playerBeacons.ContainsKey ( netId )) {
+                beacon = playerBeacons[netId];
+            } else {
+                GameObject beaconObj = new ( "GeoGuessr Beacon" );
+                beacon = beaconObj.AddComponent<Beacon> ();
+                beacon.Color = GetPlayerColor ( netId );
+                playerBeacons[netId] = beacon;
+            }
+
+            beacon.transform.position = position;
+            beacon.transform.localScale = scale;
+            beacon.gameObject.SetActive ( true );
+
+            return beacon;
+        }
+
+        private void PlayConfetti ( Vector3 position ) {
+            if (confetti == null) {
+                GameObject confettiObj = new ( "GeoGuessr Confetti" );
+                confetti = confettiObj.AddComponent<Confetti> ();
+            }
+            confetti.transform.position = position;
+            confetti.Play ();
+        }
+
         private void SetAllPlayerVisibility ( bool visible ) {
             logger.LogDebug ( $"Setting all player visibility: {visible}" );
 
@@ -422,12 +388,12 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private void SetPlayerPoint () {
-            if (!CanPlayerSetPoint(localPlayer.netId, localPlayer.netId)) {
+            if (!CanPlayerSetPoint ( localPlayer.netId, localPlayer.netId )) {
                 return;
             }
 
             GeoGuessrPoint point = new ( localPlayer );
-            BuildBeacon ( localPlayer.netId, point.GetPosition (), Vector3.one );
+            PlaceBeacon ( localPlayer.netId, point.GetPosition (), Vector3.one );
 
             logger.LogDebug ( $"Sending GeoGuessr point to server: {point.GetPosition ()}" );
             networkService.Send ( NetRelaySetPlayerGeoGuessrPoint, point );
