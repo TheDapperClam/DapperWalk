@@ -350,12 +350,13 @@ namespace DapperWalk.GeoGuessr {
             } else {
                 GameObject beaconObj = new ( "GeoGuessr Beacon" );
                 beacon = beaconObj.AddComponent<Beacon> ();
-                beacon.Color = GetPlayerColor ( netId );
+                
                 playerBeacons[netId] = beacon;
             }
 
             beacon.transform.position = position;
             beacon.transform.localScale = scale;
+            beacon.Color = GetPlayerColor ( netId );
             beacon.gameObject.SetActive ( true );
 
             return beacon;
