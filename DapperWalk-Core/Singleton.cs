@@ -6,10 +6,10 @@ namespace DapperWalk.Core {
         private static readonly ManualLogSource logger = Logging.CreateLogger ( typeof ( Singleton ) );
         private static readonly Dictionary<Type, MonoBehaviour> singletons = [];
 
-        public static T Summon<T> () where T : MonoBehaviour {
+        public static T Summon<T> (bool persistent = false) where T : MonoBehaviour {
             Type type = typeof ( T );
 
-            if (singletons.ContainsKey ( type )) {
+            if (singletons.ContainsKey ( type ) && singletons[type] != null) {
                 return (T) singletons[typeof ( T )];
             }
 
@@ -17,8 +17,11 @@ namespace DapperWalk.Core {
 
             GameObject go = new ( type.Name );
             MonoBehaviour instance = go.AddComponent<T> ();
-            singletons.Add ( type, instance );
-            GameObject.DontDestroyOnLoad ( go );
+            singletons[type] = instance;
+
+            if (persistent) {
+                GameObject.DontDestroyOnLoad ( go );
+            }
             
             return (T) instance;
         }

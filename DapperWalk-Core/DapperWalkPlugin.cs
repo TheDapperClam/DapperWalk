@@ -10,7 +10,7 @@ namespace DapperWalk.Core {
             classRegistrationService.Register ( coreAssembly );
             classRegistrationService.Register ( pluginAssembly );
 
-            ConfigService configService = Singleton.Summon<ConfigService> ();
+            ConfigService configService = Singleton.Summon<ConfigService> ( true );
             configService.Init ( Config );
 
             Harmony harmony = new ( pluginGuid );
