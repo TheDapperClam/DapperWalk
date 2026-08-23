@@ -26,20 +26,6 @@ namespace DapperWalk.GeoGuessr {
         private const float START_TIME = 10f;
 
         private static readonly ManualLogSource logger = Logging.CreateLogger ( typeof ( GeoGuessrMinigame ) );
-        private static readonly ColorPicker colorPicker = new ( [
-            Color.red,
-            Color.violet,
-            Color.blue,
-            Color.green,
-            Color.yellow,
-            Color.orange,
-            Color.violetRed,
-            Color.blueViolet,
-            Color.cyan,
-            Color.yellowGreen,
-            Color.yellowNice,
-            Color.orangeRed
-        ] );
 
         public int MinimumPlayerCount { get; set; } = 2;
 
@@ -60,7 +46,6 @@ namespace DapperWalk.GeoGuessr {
         private int participatingPlayerCount;
         private Dictionary<uint, Beacon> playerBeacons = [];
         private PlayerCharacterService playerCharacterService;
-        private Dictionary<uint, Color> playerColors = [];
         private Dictionary<uint, ScoreEntry> playerScores = [];
         private Dictionary<uint, System.Numerics.Vector3> playerStartingPoints = [];
         private Queue<uint> remainingPlayersQueue = [];
@@ -166,13 +151,14 @@ namespace DapperWalk.GeoGuessr {
         }
 
         private Color GetPlayerColor ( uint netId ) {
-            if (playerColors.ContainsKey ( netId )) {
-                return playerColors[netId];
-            }
+            PlayerCharacter? pc = playerCharacterService.GetPlayerCharacter ( netId );
 
-            Color color = colorPicker.Pick ();
-            playerColors.Add ( netId, color );
-            return color;
+            if (pc != null) {
+                Color color = pc.looks.headColor.color;
+                color.a = 1f;
+                return color;
+            }
+            return Color.black;
         }
 
         private bool HasActiveBeacon () {
