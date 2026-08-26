@@ -1,5 +1,4 @@
 ﻿using DapperWalk.Core;
-using System.Linq;
 using UnityEngine;
 
 namespace DapperWalk.GeoGuessr {
@@ -7,6 +6,7 @@ namespace DapperWalk.GeoGuessr {
         private const float BEACON_DOT_SCALE = 0.5f;
         private const string BEACON_MATERIAL_NAME = "Sprite-Unlit-Default";
         private const float BEACON_MAX_HEIGHT = 100.0f;
+        private const string BEACON_PLACE_SOUND = "ui_select";
         private const float BEACON_WIDTH = 0.25f;
 
         public Color Color {
@@ -19,6 +19,7 @@ namespace DapperWalk.GeoGuessr {
             }
         }
 
+        private AudioSource audio;
         private GameObject dot;
         private ResourceRepository resourceRepository;
 
@@ -41,6 +42,14 @@ namespace DapperWalk.GeoGuessr {
 
             Renderer rend = dot.GetComponent<Renderer> ();
             rend.material = mat;
+
+            AudioClip sfx = resourceRepository.Get<AudioClip> ( BEACON_PLACE_SOUND );
+            audio = gameObject.AddComponent<AudioSource> ();
+            audio.clip = sfx;
+        }
+
+        private void OnEnable () {
+            audio.Play ();
         }
     }
 }
