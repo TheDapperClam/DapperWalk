@@ -51,26 +51,6 @@ namespace DapperWalk.Core {
             return result;
         }
 
-        [Obsolete ( "Deprecated in favor of not having caller sending the player character" )]
-        public bool Send ( PlayerCharacter pc, Func<uint, object?, bool> function, object? payload = null ) {
-            string? json = payload != null ? JsonSerializer.Serialize ( payload, jsonOptions ) : null;
-            string message = $"{MESSAGE_PREFIX + MESSAGE_SEPARATOR + function.Method.Name + MESSAGE_SEPARATOR + json}";
-
-            logger.LogDebug ($"Sending net message: {message}");
-            pc.texter.CompleteInput ( message, out bool success );
-
-            return success;
-        }
-
-        [Obsolete ( "Deprecated in favor of using single payload string instead of args array" )]
-        public bool Send ( PlayerCharacter pc, string function, string[] args = null) {
-            string message = $"{MESSAGE_PREFIX + MESSAGE_SEPARATOR + function}" +
-                (args != null && args.Length > 0 ? $"{MESSAGE_SEPARATOR + string.Join ( MESSAGE_SEPARATOR, args )}" : "");
-            pc.texter.CompleteInput ( message, out bool success );
-
-            return success;
-        }
-
         private void Awake () {
             networkFunctionRepository = Singleton.Summon<NetworkFunctionRepository> ();
             playerCharacterService = Singleton.Summon<PlayerCharacterService> ();
